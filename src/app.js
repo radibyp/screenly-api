@@ -1,11 +1,11 @@
-'use strict';
+"use strict";
 
-const express      = require('express');
-const helmet       = require('helmet');
-const cors         = require('cors');
-const path         = require('path');
-const routes       = require('./routes');
-const errorHandler = require('./middleware/errorHandler');
+const express = require("express");
+const helmet = require("helmet");
+const cors = require("cors");
+const path = require("path");
+const routes = require("./routes");
+const errorHandler = require("./middleware/errorHandler");
 
 /**
  * Create and configure an Express application.
@@ -19,17 +19,22 @@ function createApp() {
 
   // ── API Documentation (Scalar) ──────────────────────────────────────────
   try {
-    const swaggerDocument = require('../swagger_output.json');
-    const { apiReference } = require('@scalar/express-api-reference');
+    const swaggerDocument = require("../swagger_output.json");
+    const { apiReference } = require("@scalar/express-api-reference");
     // Mount docs BEFORE helmet so strict CSP doesn't block the Scalar CDN scripts
-    app.use('/docs', apiReference({
-      theme: 'purple',
-      spec: {
-        content: swaggerDocument,
-      },
-    }));
+    app.use(
+      "/docs",
+      apiReference({
+        theme: "purple",
+        spec: {
+          content: swaggerDocument,
+        },
+      }),
+    );
   } catch (err) {
-    console.warn('Swagger output not found. Run `npm run docs:gen` to generate API docs.');
+    console.warn(
+      "Swagger output not found. Run `npm run docs:gen` to generate API docs.",
+    );
   }
 
   // ── Security & parsing ──────────────────────────────────────────────────
@@ -38,15 +43,14 @@ function createApp() {
   app.use(express.json());
 
   // ── API routes ──────────────────────────────────────────────────────────
-  app.use('/api', routes);
-
+  app.use("/api", routes);
 
   // ── Static files ────────────────────────────────────────────────────────
-  app.use(express.static(path.join(__dirname, '..', 'public')));
+  app.use(express.static(path.join(__dirname, "..", "public")));
 
   // ── 404 catch-all (must come after all routes) ──────────────────────────
   app.use((req, res) => {
-    res.status(404).json({ success: false, message: 'API not found' });
+    res.status(404).json({ success: false, message: "API not found" });
   });
 
   // ── Global error handler (must be last) ─────────────────────────────────

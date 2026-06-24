@@ -4,7 +4,7 @@ const homepageService = require('../services/homepage.service');
 const { success } = require('../lib/responseHelper');
 
 exports.status = (req, res) => {
-  res.json({ success: true, message: 'IDLIX Scrapper API v3', repo: 'annurdien' });
+  res.json({ success: true, message: 'IDLIX Scrapper API v3', repo: 'radityprtama' });
 };
 
 exports.featured = async (req, res, next) => {

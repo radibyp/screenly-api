@@ -1,6 +1,6 @@
 # IDLIX API v3
 
-[![License](https://img.shields.io/badge/license-MIT-green)](https://github.com/annurdien/IDLIX-API/blob/main/LICENSE)
+[![License](https://img.shields.io/badge/license-MIT-green)](https://github.com/radityprtama/IDLIX-API/blob/main/LICENSE)
 
 A REST API that scrapes `https://z2.idlixku.com/` using **Puppeteer + stealth plugin** to bypass Cloudflare and extract all available content data.
 
@@ -17,7 +17,7 @@ A REST API that scrapes `https://z2.idlixku.com/` using **Puppeteer + stealth pl
 ## Installation
 
 ```bash
-git clone https://github.com/annurdien/IDLIX-API.git
+git clone https://github.com/radityprtama/IDLIX-API.git
 cd IDLIX-API
 npm install
 cp .env.example .env
@@ -119,6 +119,7 @@ All responses follow the envelope:
 | GET | `/series` | Browse all series |
 | GET | `/series/trending` | Trending series |
 | GET | `/series/:slug` | Series detail — full metadata |
+| GET | `/series/:slug/stream` | Extract first episode stream URL (backward-compat) |
 | GET | `/series/:slug/season/:season/episode/:episode/stream` | Extract episode stream URL & subtitles |
 
 ---
@@ -146,6 +147,8 @@ All responses follow the envelope:
 | GET | `/country/:country` | Browse by country |
 | GET | `/country/:country?type=movie` | Filter movies only |
 | GET | `/country/:country?type=series` | Filter series only |
+| GET | `/country/movie/:country` | Movies in country |
+| GET | `/country/series/:country` | Series in country |
 
 ---
 
@@ -156,6 +159,9 @@ All responses follow the envelope:
 | GET | `/year` | List all years |
 | GET | `/year/:year` | Browse by year (e.g. `/year/2024`) |
 | GET | `/year/:year?type=movie` | Filter movies only |
+| GET | `/year/:year?type=series` | Filter series only |
+| GET | `/year/movie/:year` | Movies in year |
+| GET | `/year/series/:year` | Series in year |
 
 ---
 
@@ -164,12 +170,11 @@ All responses follow the envelope:
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/network` | List all networks |
-| GET | `/network/netflix` | Netflix content |
-| GET | `/network/hbo` | HBO content |
-| GET | `/network/disney-plus` | Disney+ content |
-| GET | `/network/apple-tv-plus` | Apple TV+ content |
-| GET | `/network/amazon-prime-video` | Prime Video content |
-| GET | `/network/:network?type=series` | Filter by type |
+| GET | `/network/:network` | Browse by network |
+| GET | `/network/:network?type=movie` | Filter movies only |
+| GET | `/network/:network?type=series` | Filter series only |
+| GET | `/network/movie/:network` | Movies in network |
+| GET | `/network/series/:network` | Series in network |
 
 ---
 
