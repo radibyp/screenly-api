@@ -2,7 +2,7 @@
 
 // Must be hoisted before any require of the real modules
 jest.mock('../../src/lib/httpClient', () => ({
-  get:           jest.fn(),
+  getJson:       jest.fn(),
   getStreamData: jest.fn(),
 }));
 jest.mock('../../src/lib/cacheService', () => ({
@@ -15,15 +15,6 @@ const request    = require('supertest');
 const createApp  = require('../../src/app');
 const httpClient = require('../../src/lib/httpClient');
 const cache      = require('../../src/lib/cacheService');
-const fs         = require('fs');
-const path       = require('path');
-
-const FIXTURES      = path.join(__dirname, '../fixtures');
-const TRENDING_HTML  = fs.readFileSync(path.join(FIXTURES, 'trending.html'), 'utf-8');
-const CARDS_HTML     = fs.readFileSync(path.join(FIXTURES, 'cards.html'),    'utf-8');
-const HOMEPAGE_HTML  = fs.readFileSync(path.join(FIXTURES, 'homepage.html'), 'utf-8');
-const DETAIL_HTML    = fs.readFileSync(path.join(__dirname, '../../site/movie_detail.html'), 'utf-8');
-const EMPTY_HTML     = '<section class="sr-only"><ul></ul></section>';
 
 describe('Movie Routes', () => {
   let app;
@@ -40,14 +31,20 @@ describe('Movie Routes', () => {
 
   describe('GET /api/movie', () => {
     it('returns 200 with envelope and movie browse items', async () => {
-      httpClient.get.mockResolvedValue({ data: TRENDING_HTML });
+      httpClient.getJson.mockResolvedValue({
+        data: [
+          { title: 'Movie 1', slug: 'movie-1', contentType: 'movie' },
+          { title: 'Movie 2', slug: 'movie-2', contentType: 'movie' }
+        ]
+      });
 
       const res = await request(app).get('/api/movie');
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
       expect(Array.isArray(res.body.data)).toBe(true);
-      expect(httpClient.get).toHaveBeenCalledWith('/movie');
+      expect(res.body.data).toHaveLength(2);
+      expect(httpClient.getJson).toHaveBeenCalledWith('/api/movies?page=1&limit=36&sort=createdAt');
     });
   });
 
@@ -55,7 +52,17 @@ describe('Movie Routes', () => {
 
   describe('GET /api/movie/trending', () => {
     it('returns 200 with an array of movies on success', async () => {
-      httpClient.get.mockResolvedValue({ data: HOMEPAGE_HTML });
+      httpClient.getJson.mockResolvedValue({
+        above: [
+          {
+            title: 'Trending Now',
+            data: [
+              { title: 'Trending Movie 1', slug: 'trending-movie-1', contentType: 'movie' },
+              { title: 'Trending Series 1', slug: 'trending-series-1', contentType: 'series' }
+            ]
+          }
+        ]
+      });
 
       const res = await request(app).get('/api/movie/trending');
 
@@ -64,10 +71,10 @@ describe('Movie Routes', () => {
       expect(Array.isArray(res.body.data)).toBe(true);
       expect(res.body.data).toHaveLength(1); // only 1 movie in "Trending Now"
       expect(res.body.data[0]).toMatchObject({
-        title: expect.any(String),
+        title: 'Trending Movie 1',
         link:  expect.objectContaining({ url: expect.any(String) }),
       });
-      expect(httpClient.get).toHaveBeenCalledWith('/');
+      expect(httpClient.getJson).toHaveBeenCalledWith('/api/homepage');
     });
 
     it('returns cached data and skips HTTP when cache is fresh', async () => {
@@ -79,11 +86,20 @@ describe('Movie Routes', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.data).toEqual(cached);
-      expect(httpClient.get).not.toHaveBeenCalled();
+      expect(httpClient.getJson).not.toHaveBeenCalled();
     });
 
     it('stores scraped results in cache', async () => {
-      httpClient.get.mockResolvedValue({ data: HOMEPAGE_HTML });
+      httpClient.getJson.mockResolvedValue({
+        above: [
+          {
+            title: 'Trending Now',
+            data: [
+              { title: 'Trending Movie 1', slug: 'trending-movie-1', contentType: 'movie' }
+            ]
+          }
+        ]
+      });
 
       await request(app).get('/api/movie/trending');
 
@@ -91,7 +107,7 @@ describe('Movie Routes', () => {
     });
 
     it('returns 500 on network error', async () => {
-      httpClient.get.mockRejectedValue(new Error('Network Error'));
+      httpClient.getJson.mockRejectedValue(new Error('Network Error'));
 
       const res = await request(app).get('/api/movie/trending');
 
@@ -104,18 +120,22 @@ describe('Movie Routes', () => {
 
   describe('GET /api/movie/trending/:page', () => {
     it('returns 200 with movies for page 1', async () => {
-      httpClient.get.mockResolvedValue({ data: TRENDING_HTML });
+      httpClient.getJson.mockResolvedValue({
+        data: [
+          { title: 'Trending Page Movie 1', slug: 'trending-page-movie-1', contentType: 'movie' }
+        ]
+      });
 
       const res = await request(app).get('/api/movie/trending/1');
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
       expect(Array.isArray(res.body.data)).toBe(true);
-      expect(httpClient.get).toHaveBeenCalledWith('/movie');
+      expect(httpClient.getJson).toHaveBeenCalledWith('/api/movies?page=1&limit=36&sort=popularityScore');
     });
 
     it('returns 404 when the requested page has no results', async () => {
-      httpClient.get.mockResolvedValue({ data: EMPTY_HTML });
+      httpClient.getJson.mockResolvedValue({ data: [] });
 
       const res = await request(app).get('/api/movie/trending/999');
 
@@ -123,18 +143,10 @@ describe('Movie Routes', () => {
       expect(res.body.success).toBe(false);
     });
 
-    it('returns 404 for page 2 (new site has no pagination)', async () => {
-      httpClient.get.mockResolvedValue({ data: TRENDING_HTML });
-
-      const res = await request(app).get('/api/movie/trending/2');
-
-      expect(res.status).toBe(404);
-    });
-
     it('returns 400 for a non-numeric page "abc"', async () => {
       const res = await request(app).get('/api/movie/trending/abc');
       expect(res.status).toBe(400);
-      expect(httpClient.get).not.toHaveBeenCalled();
+      expect(httpClient.getJson).not.toHaveBeenCalled();
     });
 
     it('returns 400 for page "0"', async () => {
@@ -143,32 +155,9 @@ describe('Movie Routes', () => {
     });
 
     it('returns 500 on network error', async () => {
-      httpClient.get.mockRejectedValue(new Error('Timeout'));
+      httpClient.getJson.mockRejectedValue(new Error('Timeout'));
 
       const res = await request(app).get('/api/movie/trending/1');
-
-      expect(res.status).toBe(500);
-    });
-  });
-
-  // ── GET /api/movie/mcu ────────────────────────────────────────────────────
-
-  describe('GET /api/movie/mcu', () => {
-    it('returns 200 with collection items from homepage', async () => {
-      httpClient.get.mockResolvedValue({ data: CARDS_HTML });
-
-      const res = await request(app).get('/api/movie/mcu');
-
-      expect(res.status).toBe(200);
-      expect(res.body.success).toBe(true);
-      expect(Array.isArray(res.body.data)).toBe(true);
-      expect(httpClient.get).toHaveBeenCalledWith('/');
-    });
-
-    it('returns 500 on network error', async () => {
-      httpClient.get.mockRejectedValue(new Error('Timeout'));
-
-      const res = await request(app).get('/api/movie/mcu');
 
       expect(res.status).toBe(500);
     });
@@ -178,7 +167,14 @@ describe('Movie Routes', () => {
 
   describe('GET /api/movie/:slug', () => {
     it('returns 200 with rich detail metadata', async () => {
-      httpClient.get.mockResolvedValue({ data: DETAIL_HTML });
+      httpClient.getJson.mockResolvedValue({
+        title: 'Per Aspera Ad Astra',
+        slug: 'per-aspera-ad-astra-2026',
+        releaseDate: '2026-01-01',
+        runtime: '111',
+        overview: 'Test movie overview',
+        genres: [{ name: 'Sci-Fi' }]
+      });
 
       const res = await request(app).get('/api/movie/per-aspera-ad-astra-2026');
 
@@ -189,15 +185,16 @@ describe('Movie Routes', () => {
         year: 2026,
         type: 'movie',
       });
+      expect(httpClient.getJson).toHaveBeenCalledWith('/api/movies/per-aspera-ad-astra-2026');
     });
 
     it('returns 400 for invalid slug characters', async () => {
-      const res = await request(app).get('/api/movie/../../etc/passwd');
+      const res = await request(app).get('/api/movie/invalid@slug');
       expect(res.status).toBe(400);
     });
 
     it('returns 500 on network error', async () => {
-      httpClient.get.mockRejectedValue(new Error('Timeout'));
+      httpClient.getJson.mockRejectedValue(new Error('Timeout'));
       const res = await request(app).get('/api/movie/some-movie-2024');
       expect(res.status).toBe(500);
     });

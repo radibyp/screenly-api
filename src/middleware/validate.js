@@ -46,7 +46,7 @@ function validateGenre(req, res, next) {
  */
 function validateSlug(req, res, next) {
   const values = req.params || {};
-  const slug = values.slug || values.country || values.network || values.genre;
+  const slug = values.value || values.slug || values.country || values.network || values.genre;
   if (!slug || !/^[a-z0-9-]+$/i.test(slug)) {
     return res
       .status(400)
@@ -77,7 +77,8 @@ function validateMediaSlug(req, res, next) {
  * @type {import('express').RequestHandler}
  */
 function validateYear(req, res, next) {
-  const { year } = req.params;
+  const values = req.params || {};
+  const year = values.value || values.year;
   if (!year || !/^(19|20)\d{2}$/.test(String(year))) {
     return res
       .status(400)

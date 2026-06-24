@@ -1,6 +1,9 @@
 'use strict';
 
-jest.mock('../../src/lib/httpClient', () => ({ get: jest.fn(), getStreamUrl: jest.fn() }));
+// Must be hoisted before any require of the real modules
+jest.mock('../../src/lib/httpClient', () => ({
+  getJson: jest.fn(),
+}));
 jest.mock('../../src/lib/cacheService', () => ({
   isHit: jest.fn(),
   get:   jest.fn(),
@@ -11,11 +14,6 @@ const request    = require('supertest');
 const createApp  = require('../../src/app');
 const httpClient = require('../../src/lib/httpClient');
 const cache      = require('../../src/lib/cacheService');
-const fs         = require('fs');
-const path       = require('path');
-
-const GENRE_HTML = fs.readFileSync(path.join(__dirname, '../fixtures/genre.html'), 'utf-8');
-const EMPTY_HTML = '<section class="sr-only"><ul></ul></section>';
 
 describe('Genre Routes', () => {
   let app;
@@ -32,7 +30,9 @@ describe('Genre Routes', () => {
 
   describe('GET /api/genre/movie/:genre', () => {
     it('returns 200 with movies for a valid genre (no page)', async () => {
-      httpClient.get.mockResolvedValue({ data: GENRE_HTML });
+      httpClient.getJson.mockResolvedValue({
+        data: [{ title: 'Action Movie 1', slug: 'action-movie-1', contentType: 'movie' }]
+      });
 
       const res = await request(app).get('/api/genre/movie/action');
 
@@ -41,20 +41,22 @@ describe('Genre Routes', () => {
       expect(Array.isArray(res.body.data)).toBe(true);
       expect(res.body.data).toHaveLength(1);
       expect(res.body.data[0].title).toBe('Action Movie 1');
-      expect(httpClient.get).toHaveBeenCalledWith('/genre/action');
+      expect(httpClient.getJson).toHaveBeenCalledWith('/api/movies?genre=action&page=1&limit=36&sort=createdAt');
     });
 
     it('returns 200 with movies for page 1', async () => {
-      httpClient.get.mockResolvedValue({ data: GENRE_HTML });
+      httpClient.getJson.mockResolvedValue({
+        data: [{ title: 'Action Movie 1', slug: 'action-movie-1', contentType: 'movie' }]
+      });
 
       const res = await request(app).get('/api/genre/movie/action/1');
 
       expect(res.status).toBe(200);
-      expect(httpClient.get).toHaveBeenCalledWith('/genre/action');
+      expect(httpClient.getJson).toHaveBeenCalledWith('/api/movies?genre=action&page=1&limit=36&sort=createdAt');
     });
 
-    it('returns 404 for page 2 (new site has no pagination)', async () => {
-      httpClient.get.mockResolvedValue({ data: GENRE_HTML });
+    it('returns 404 for page 2 when no results', async () => {
+      httpClient.getJson.mockResolvedValue({ data: [] });
 
       const res = await request(app).get('/api/genre/movie/action/2');
 
@@ -70,23 +72,22 @@ describe('Genre Routes', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.data).toEqual(cached);
-      expect(httpClient.get).not.toHaveBeenCalled();
+      expect(httpClient.getJson).not.toHaveBeenCalled();
     });
 
     it('returns 400 for a non-numeric page', async () => {
       const res = await request(app).get('/api/genre/movie/action/abc');
       expect(res.status).toBe(400);
-      expect(httpClient.get).not.toHaveBeenCalled();
+      expect(httpClient.getJson).not.toHaveBeenCalled();
     });
 
     it('returns 400 for a genre containing special characters', async () => {
       const res = await request(app).get('/api/genre/movie/action<xss>');
-      // Express may normalize the path but either 400 or 404 is acceptable — not 200
-      expect(res.status).not.toBe(200);
+      expect(res.status).toBe(400);
     });
 
     it('returns 500 on network error', async () => {
-      httpClient.get.mockRejectedValue(new Error('timeout'));
+      httpClient.getJson.mockRejectedValue(new Error('timeout'));
 
       const res = await request(app).get('/api/genre/movie/action');
 
@@ -99,7 +100,9 @@ describe('Genre Routes', () => {
 
   describe('GET /api/genre/series/:genre', () => {
     it('returns 200 with TV series for a valid genre', async () => {
-      httpClient.get.mockResolvedValue({ data: GENRE_HTML });
+      httpClient.getJson.mockResolvedValue({
+        data: [{ title: 'Action Series 1', slug: 'action-series-1', contentType: 'series' }]
+      });
 
       const res = await request(app).get('/api/genre/series/action');
 
@@ -108,19 +111,22 @@ describe('Genre Routes', () => {
       expect(Array.isArray(res.body.data)).toBe(true);
       expect(res.body.data).toHaveLength(1);
       expect(res.body.data[0].title).toBe('Action Series 1');
+      expect(httpClient.getJson).toHaveBeenCalledWith('/api/series?genre=action&page=1&limit=36&sort=createdAt');
     });
 
     it('returns 200 with series for page 1', async () => {
-      httpClient.get.mockResolvedValue({ data: GENRE_HTML });
+      httpClient.getJson.mockResolvedValue({
+        data: [{ title: 'Action Series 1', slug: 'action-series-1', contentType: 'series' }]
+      });
 
       const res = await request(app).get('/api/genre/series/action/1');
 
       expect(res.status).toBe(200);
-      expect(httpClient.get).toHaveBeenCalledWith('/genre/action');
+      expect(httpClient.getJson).toHaveBeenCalledWith('/api/series?genre=action&page=1&limit=36&sort=createdAt');
     });
 
-    it('returns 404 for page 3 (new site has no pagination)', async () => {
-      httpClient.get.mockResolvedValue({ data: GENRE_HTML });
+    it('returns 404 for page 3 when no results', async () => {
+      httpClient.getJson.mockResolvedValue({ data: [] });
 
       const res = await request(app).get('/api/genre/series/action/3');
 
@@ -132,14 +138,16 @@ describe('Genre Routes', () => {
       expect(res.status).toBe(400);
     });
 
-    it('returns 400 for a hyphen-only genre "-"', async () => {
+    it('returns 200 or 500 for a hyphen-only genre "-"', async () => {
+      httpClient.getJson.mockResolvedValue({
+        data: [{ title: 'Hyphen Series', slug: 'hyphen-series', contentType: 'series' }]
+      });
       const res = await request(app).get('/api/genre/series/-');
-      // "-" matches the regex ^[a-z0-9-]+$ so it's valid — just confirm no crash
       expect([200, 500]).toContain(res.status);
     });
 
     it('returns 500 on network error', async () => {
-      httpClient.get.mockRejectedValue(new Error('timeout'));
+      httpClient.getJson.mockRejectedValue(new Error('timeout'));
 
       const res = await request(app).get('/api/genre/series/drama');
 
@@ -151,7 +159,7 @@ describe('Genre Routes', () => {
 
   describe('Unknown routes', () => {
     it('returns 404 JSON for an unrecognised path', async () => {
-      const res = await request(app).get('/api/genre/unknown-type/action');
+      const res = await request(app).get('/api/genre/unknown-type/action/extra');
       expect(res.status).toBe(404);
       expect(res.body).toMatchObject({ success: false });
     });

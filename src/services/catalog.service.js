@@ -93,6 +93,11 @@ async function getCategoryBrowse(category, value, type, page = 1) {
   const data = await httpClient.getJson(`${apiPath}?${qs}`);
   const items = (data?.data || []).map(mapApiItem).filter(Boolean);
 
+  if (items.length === 0) {
+    const err = new Error('No results found');
+    err.status = 404;
+    throw err;
+  }
 
   cache.set(key, items);
   return items;

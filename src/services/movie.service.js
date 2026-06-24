@@ -50,6 +50,11 @@ async function getTrendingPage(page) {
   const data = await httpClient.getJson(`/api/movies?page=${page}&limit=36&sort=popularityScore`);
   const items = (data?.data || []).map(mapApiItem).filter(Boolean);
 
+  if (items.length === 0) {
+    const err = new Error('No results found');
+    err.status = 404;
+    throw err;
+  }
 
   cache.set(key, items);
   return items;

@@ -1,195 +1,214 @@
 'use strict';
 
-const fs   = require('fs');
-const path = require('path');
+const { mapApiItem, mapApiDetail } = require('../../src/lib/scraper');
+const { BASE_URL } = require('../../src/config/env');
 
-const {
-  parseMediaItems,
-  parseHomepageSection,
-  parseCategoryItems,
-  parseDetail,
-} = require('../../src/lib/scraper');
-
-const FIXTURES = path.join(__dirname, '../fixtures');
-const read = (name) => fs.readFileSync(path.join(FIXTURES, name), 'utf-8');
-
-// ── parseMediaItems ──────────────────────────────────────────────────────────
-
-describe('parseMediaItems', () => {
-  const trendingHtml = read('trending.html');
-  const genreHtml    = read('genre.html');
-  const networkHtml  = read('network.html');
-
-  it('extracts movie items from a movie listing page', () => {
-    const items = parseMediaItems(trendingHtml, 'movie');
-    expect(items).toHaveLength(2); // third item has empty text — filtered
-    expect(items[0]).toMatchObject({
-      title: 'Trending Movie 1',
-      link: {
-        endpoint: 'movie/trending-movie-1',
-        url:      'https://z2.idlixku.com/movie/trending-movie-1',
-        thumbnail: null,
-      },
-    });
-    expect(items[1].title).toBe('Trending Movie 2');
+describe('scraper.js - mapApiItem', () => {
+  it('returns null if item is null or undefined', () => {
+    expect(mapApiItem(null)).toBeNull();
+    expect(mapApiItem(undefined)).toBeNull();
   });
 
-  it('extracts movie items from a genre page', () => {
-    const items = parseMediaItems(genreHtml, 'movie');
-    expect(items).toHaveLength(1);
-    expect(items[0].title).toBe('Action Movie 1');
+  it('returns null if item has no slug', () => {
+    const raw = { title: 'No Slug' };
+    expect(mapApiItem(raw)).toBeNull();
   });
 
-  it('extracts tvshow items from a genre page', () => {
-    const items = parseMediaItems(genreHtml, 'series');
-    expect(items).toHaveLength(1);
-    expect(items[0].title).toBe('Action Series 1');
-  });
+  it('correctly maps a basic movie item', () => {
+    const raw = {
+      title: 'Test Movie',
+      originalTitle: 'Original Test Movie',
+      slug: 'test-movie-2026',
+      contentType: 'movie',
+      releaseDate: '2026-05-24',
+      voteAverage: 8.5,
+      quality: 'HD',
+      posterPath: '/path-to-poster.jpg',
+      backdropPath: '/path-to-backdrop.jpg'
+    };
 
-  it('extracts series items from a network page', () => {
-    const items = parseMediaItems(networkHtml, 'series');
-    expect(items).toHaveLength(2);
-    expect(items[0].title).toBe('Test Series 1');
-    expect(items[1].title).toBe('Test Series 2');
-  });
-
-  it('extracts all media items when no type filter is given', () => {
-    const items = parseMediaItems(networkHtml);
-    expect(items).toHaveLength(4);
-  });
-
-  it('returns an empty array when no matching elements are found', () => {
-    expect(parseMediaItems('<div></div>', 'movie')).toEqual([]);
-  });
-
-  it('skips items that have no text (title)', () => {
-    const html = `
-      <section class="sr-only">
-        <ul>
-          <li><a href="/movie/no-text"></a></li>
-          <li><a href="/movie/has-text">Has Text</a></li>
-        </ul>
-      </section>`;
-    const items = parseMediaItems(html, 'movie');
-    expect(items).toHaveLength(1);
-    expect(items[0].title).toBe('Has Text');
-  });
-
-  it('skips non-media links', () => {
-    const html = `
-      <section class="sr-only">
-        <ul>
-          <li><a href="/leaderboard">Leaderboard</a></li>
-          <li><a href="/movie/real-movie">Real Movie</a></li>
-        </ul>
-      </section>`;
-    const items = parseMediaItems(html, 'movie');
-    expect(items).toHaveLength(1);
-    expect(items[0].title).toBe('Real Movie');
-  });
-});
-
-// ── parseHomepageSection ─────────────────────────────────────────────────────
-
-describe('parseHomepageSection', () => {
-  const homepageHtml = read('homepage.html');
-
-  it('extracts items from the "Trending Now" section', () => {
-    const items = parseHomepageSection(homepageHtml, 'Trending Now');
-    expect(items).toHaveLength(3);
-    expect(items[0]).toMatchObject({
-      title: 'Teach You a Lesson',
-      link: {
-        endpoint: 'series/teach-you-a-lesson-2026',
-        url:      'https://z2.idlixku.com/series/teach-you-a-lesson-2026',
-        thumbnail: null,
-      },
-    });
-  });
-
-  it('filters to movies only when type is "movie"', () => {
-    const items = parseHomepageSection(homepageHtml, 'Trending Now', 'movie');
-    expect(items).toHaveLength(1);
-    expect(items[0].title).toBe('Salmokji: Whispering Water');
-  });
-
-  it('filters to series only when type is "series"', () => {
-    const items = parseHomepageSection(homepageHtml, 'Trending Now', 'series');
-    expect(items).toHaveLength(2);
-    expect(items[0].title).toBe('Teach You a Lesson');
-  });
-
-  it('extracts items from the "Recently Added Movies" section', () => {
-    const items = parseHomepageSection(homepageHtml, 'Recently Added Movies', 'movie');
-    expect(items).toHaveLength(2);
-    expect(items[0].title).toBe('Per Aspera Ad Astra');
-  });
-
-  it('extracts items from the "Collections" section', () => {
-    const items = parseHomepageSection(homepageHtml, 'Collections');
-    expect(items).toHaveLength(2);
-  });
-
-  it('extracts items from the "Network Originals" section', () => {
-    const items = parseHomepageSection(homepageHtml, 'Network Originals', 'series');
-    expect(items).toHaveLength(2);
-  });
-
-  it('returns an empty array for a non-existent section', () => {
-    expect(parseHomepageSection(homepageHtml, 'Nonexistent Section')).toEqual([]);
-  });
-
-  it('returns an empty array for HTML without the expected structure', () => {
-    expect(parseHomepageSection('<div></div>', 'Trending Now')).toEqual([]);
-  });
-});
-
-// ── parseCategoryItems ─────────────────────────────────────────────────────
-
-describe('parseCategoryItems', () => {
-  it('extracts country, year, and network entries from category pages', () => {
-    const html = `
-      <section class="sr-only">
-        <ul>
-          <li><a href="/country/CN">China</a></li>
-          <li><a href="/year/2026">2026</a></li>
-          <li><a href="/network/hbo">HBO</a></li>
-        </ul>
-      </section>`;
-
-    expect(parseCategoryItems(html, 'country')).toMatchObject([
-      { title: 'China', code: 'CN', value: 'CN' },
-    ]);
-    expect(parseCategoryItems(html, 'year')).toMatchObject([
-      { title: '2026', year: 2026, value: 2026 },
-    ]);
-    expect(parseCategoryItems(html, 'network')).toMatchObject([
-      { title: 'HBO', network: 'hbo', value: 'hbo' },
-    ]);
-  });
-});
-
-// ── parseDetail ───────────────────────────────────────────────────────────
-
-describe('parseDetail', () => {
-  const detailHtml = fs.readFileSync(path.join(__dirname, '../../site/movie_detail.html'), 'utf-8');
-
-  it('extracts rich movie metadata and playback URLs', () => {
-    const detail = parseDetail(detailHtml);
-
-    expect(detail).toMatchObject({
-      title: 'Per Aspera Ad Astra',
-      originalTitle: expect.any(String),
+    const result = mapApiItem(raw);
+    expect(result).toEqual({
+      title: 'Test Movie',
+      originalTitle: 'Original Test Movie',
       year: 2026,
-      runtimeMinutes: 111,
       type: 'movie',
-      country: 'China',
+      quality: 'HD',
+      rating: 8.5,
+      season: null,
+      poster: 'https://image.tmdb.org/t/p/w300/path-to-poster.jpg',
+      backdrop: 'https://image.tmdb.org/t/p/w1280/path-to-backdrop.jpg',
+      slug: 'test-movie-2026',
+      link: {
+        endpoint: 'movie/test-movie-2026',
+        url: `${BASE_URL}/movie/test-movie-2026`,
+        thumbnail: 'https://image.tmdb.org/t/p/w300/path-to-poster.jpg'
+      }
     });
-    expect(detail.keywords).toEqual(expect.arrayContaining(['virtual reality', 'dream realm']));
-    expect(detail.watchUrl).toContain('?play=1');
-    expect(detail.playerUrl).toContain('?play=1');
-    expect(detail.breadcrumbs.length).toBeGreaterThan(0);
-    expect(detail.poster).toContain('image.tmdb.org');
-    expect(detail.streamUrl).toBeNull();
+  });
+
+  it('correctly maps nested item.content structure', () => {
+    const raw = {
+      contentType: 'series',
+      content: {
+        title: 'Nested Series',
+        slug: 'nested-series-2026',
+        firstAirDate: '2026-10-10',
+        voteAverage: '7.8',
+        posterPath: '/nested-poster.jpg'
+      }
+    };
+
+    const result = mapApiItem(raw);
+    expect(result).toMatchObject({
+      title: 'Nested Series',
+      year: 2026,
+      type: 'series',
+      rating: 7.8,
+      poster: 'https://image.tmdb.org/t/p/w300/nested-poster.jpg',
+      slug: 'nested-series-2026',
+      link: {
+        endpoint: 'series/nested-series-2026'
+      }
+    });
+  });
+
+  it('falls back to contentType tv_series as a series', () => {
+    const raw = {
+      title: 'TV Series',
+      slug: 'tv-series-slug',
+      contentType: 'tv_series'
+    };
+    const result = mapApiItem(raw);
+    expect(result.type).toBe('series');
+    expect(result.link.endpoint).toBe('series/tv-series-slug');
+  });
+
+  it('handles missing year, rating, quality, and images gracefully', () => {
+    const raw = {
+      title: 'Minimal Movie',
+      slug: 'minimal-movie'
+    };
+    const result = mapApiItem(raw);
+    expect(result).toEqual({
+      title: 'Minimal Movie',
+      originalTitle: 'Minimal Movie',
+      year: null,
+      type: 'movie',
+      quality: null,
+      rating: null,
+      season: null,
+      poster: null,
+      backdrop: null,
+      slug: 'minimal-movie',
+      link: {
+        endpoint: 'movie/minimal-movie',
+        url: `${BASE_URL}/movie/minimal-movie`,
+        thumbnail: null
+      }
+    });
+  });
+});
+
+describe('scraper.js - mapApiDetail', () => {
+  it('returns empty object if item is falsy', () => {
+    expect(mapApiDetail(null)).toEqual({});
+    expect(mapApiDetail(undefined)).toEqual({});
+  });
+
+  it('correctly maps a movie detail', () => {
+    const raw = {
+      title: 'Movie Detail Title',
+      slug: 'movie-detail-2026',
+      releaseDate: '2026-01-01',
+      runtime: '120',
+      overview: 'Movie overview description.',
+      posterPath: '/poster.jpg',
+      backdropPath: '/backdrop.jpg',
+      genres: [{ name: 'Action' }, { name: 'Drama' }],
+      country: 'United States',
+      originalLanguage: 'en',
+      director: 'Director Name',
+      cast: [
+        { name: 'Actor 1', character: 'Character 1', profilePath: '/actor1.jpg' },
+        { name: 'Actor 2', character: 'Character 2', profilePath: null }
+      ],
+      trailerUrl: 'https://youtube.com/watch?v=123',
+      keywords: [{ name: 'superhero' }, { name: 'sequel' }]
+    };
+
+    const result = mapApiDetail(raw);
+    expect(result).toEqual({
+      title: 'Movie Detail Title',
+      year: 2026,
+      type: 'movie',
+      runtime: 'PT120M',
+      runtimeMinutes: 120,
+      overview: 'Movie overview description.',
+      poster: 'https://image.tmdb.org/t/p/w300/poster.jpg',
+      backdrop: 'https://image.tmdb.org/t/p/w1280/backdrop.jpg',
+      genres: ['Action', 'Drama'],
+      country: 'United States',
+      countryCode: null,
+      language: 'en',
+      director: { name: 'Director Name', url: null },
+      cast: [
+        { name: 'Actor 1', character: 'Character 1', image: 'https://image.tmdb.org/t/p/w185/actor1.jpg' },
+        { name: 'Actor 2', character: 'Character 2', image: null }
+      ],
+      trailer: 'https://youtube.com/watch?v=123',
+      watchUrl: `${BASE_URL}/movie/movie-detail-2026?play=1`,
+      streamUrl: null,
+      keywords: ['superhero', 'sequel'],
+      recommendations: [],
+      seasons: null
+    });
+  });
+
+  it('correctly maps a series detail with seasons and episodes', () => {
+    const raw = {
+      title: 'Series Detail Title',
+      slug: 'series-detail-2026',
+      firstAirDate: '2026-02-02',
+      numberOfSeasons: 2,
+      genres: [{ name: 'Sci-Fi' }],
+      seasons: [
+        {
+          name: 'Season 1',
+          seasonNumber: 1,
+          episodeCount: 1,
+          episodes: [
+            {
+              episodeNumber: 1,
+              title: 'Episode 1 Title',
+              overview: 'Episode 1 Overview'
+            }
+          ]
+        }
+      ]
+    };
+
+    const result = mapApiDetail(raw);
+    expect(result).toMatchObject({
+      title: 'Series Detail Title',
+      year: 2026,
+      type: 'series',
+      genres: ['Sci-Fi'],
+      watchUrl: `${BASE_URL}/series/series-detail-2026?play=1`,
+      seasons: [
+        {
+          name: 'Season 1',
+          seasonNumber: 1,
+          episodeCount: 1,
+          episodes: [
+            {
+              episodeNumber: 1,
+              title: 'Episode 1 Title',
+              overview: 'Episode 1 Overview'
+            }
+          ]
+        }
+      ]
+    });
   });
 });

@@ -14,11 +14,31 @@ async function getFeatured() {
   const key = 'featured';
   if (cache.isHit(key, CACHE_TTL.featured)) return cache.get(key);
 
+  console.log(`[scraper:featured] Fetching JSON data from /api/homepage`);
   const data = await httpClient.getJson('/api/homepage');
-  if (!data || !data.above) return [];
+  
+  if (!data) {
+    console.error(`[scraper:featured] Error: Received null or failed to parse JSON from /api/homepage. The endpoint might be protected by Cloudflare.`);
+    throw new Error('Failed to retrieve or parse featured data from upstream API. Possibly blocked by Cloudflare.');
+  }
+
+  if (!data.above) {
+     console.warn(`[scraper:featured] Warning: 'above' section is missing from the JSON response.`);
+     return [];
+  }
   
   const section = data.above.find(s => s.title && s.title.toLowerCase().includes('featured')) || data.above[0];
-  const items = (section?.data || []).map(mapApiItem).filter(Boolean);
+  const rawItems = section?.data || [];
+  
+  console.log(`[scraper:featured] Found ${rawItems.length} raw items in the featured section.`);
+  
+  const items = rawItems.map(mapApiItem).filter(Boolean);
+  
+  if (items.length > 0) {
+    console.log(`[scraper:featured] First parsed item:\n${JSON.stringify(items[0], null, 2).substring(0, 500)}`);
+  } else {
+    console.warn(`[scraper:featured] No items were successfully parsed. This may indicate a change in the upstream JSON structure.`);
+  }
   
   cache.set(key, items);
   return items;
