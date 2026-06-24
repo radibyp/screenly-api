@@ -13,7 +13,7 @@
       "/api": {
         "type": "openapi",
         "title": "IDLIX API Reference",
-        "url": "swagger_output.json"
+        "url": "./swagger_output.json"
       }
     }
   }
