@@ -188,7 +188,7 @@ async function browserFetch(url, { method = 'GET', body, headers = {} } = {}) {
   );
 
   // If CF is re-challenging, re-initialize then retry once
-  if (result.status === 403 || (result.ok === false && result.text.includes('cf-'))) {
+  if (result.status === 403 || (result.ok === false && (result.text.includes('cf-challenge-stage') || result.text.includes('__cf_chl_opt')))) {
     console.warn('[browser] 403 on browserFetch — re-initializing and retrying...');
     await invalidate();
     await ensureReady();

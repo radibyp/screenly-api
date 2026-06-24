@@ -43,11 +43,28 @@ const httpClient = {
    */
   async getJson(path) {
     const url = `${BASE_URL}${path.startsWith('/') ? path : `/${path}`}`;
+    console.log(`[httpClient:getJson] Fetching URL: ${url}`);
+    
     const res = await browserFetch(url, {
       headers: { accept: 'application/json' },
     });
+    
+    console.log(`[httpClient:getJson] HTTP Status: ${res.status}`);
+    console.log(`[httpClient:getJson] Raw Response (first 1000 chars):\n${(res.text || '').substring(0, 1000)}`);
+    
+    if (res.status === 403 || res.text.includes('<title>Just a moment...</title>') || res.text.includes('cf-challenge-stage') || res.text.includes('__cf_chl_opt')) {
+      console.error(`[httpClient:getJson] Validation Error: Detected Cloudflare or anti-bot protection page.`);
+      return null;
+    }
+
     if (!res.ok) return null;
-    try { return JSON.parse(res.text); } catch (_) { return null; }
+    
+    try { 
+      return JSON.parse(res.text); 
+    } catch (err) { 
+      console.error(`[httpClient:getJson] Error parsing JSON. Response may not be valid JSON.`);
+      return null; 
+    }
   },
 
 
