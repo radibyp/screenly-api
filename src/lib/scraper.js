@@ -9,26 +9,35 @@ const { BASE_URL } = require('../config/env');
  */
 function mapApiItem(item) {
   if (!item) return null;
-  const isSeries = item.contentType === 'series';
-  const endpoint = `${isSeries ? 'series' : 'movie'}/${item.slug}`;
+  
+  const source = item.content ? item.content : item;
+  const contentType = item.contentType || source.contentType || 'movie';
+  const isSeries = contentType === 'series' || contentType === 'tv_series';
+  const slug = source.slug;
+  if (!slug) return null;
+  
+  const endpoint = `${isSeries ? 'series' : 'movie'}/${slug}`;
 
   let year = null;
-  if (item.releaseDate) {
-    year = parseInt(String(item.releaseDate).substring(0, 4), 10) || null;
+  const releaseDate = source.releaseDate || source.firstAirDate;
+  if (releaseDate) {
+    year = parseInt(String(releaseDate).substring(0, 4), 10) || null;
   }
 
-  const posterUrl = item.posterPath ? `https://image.tmdb.org/t/p/w300${item.posterPath}` : null;
+  const posterUrl = source.posterPath ? `https://image.tmdb.org/t/p/w300${source.posterPath}` : null;
+  const backdropUrl = source.backdropPath ? `https://image.tmdb.org/t/p/w1280${source.backdropPath}` : null;
 
   return {
-    title: item.title || '',
-    originalTitle: item.title || '',
+    title: source.title || '',
+    originalTitle: source.originalTitle || source.title || '',
     year,
     type: isSeries ? 'series' : 'movie',
-    quality: item.quality || null,
-    rating: item.voteAverage ? parseFloat(item.voteAverage) : null,
-    season: null, // Only visible inside series detail usually
+    quality: source.quality || null,
+    rating: source.voteAverage ? parseFloat(source.voteAverage) : null,
+    season: null,
     poster: posterUrl,
-    slug: item.slug,
+    backdrop: backdropUrl,
+    slug,
     link: {
       endpoint,
       url: `${BASE_URL}/${endpoint}`,
