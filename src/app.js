@@ -21,11 +21,23 @@ function createApp() {
   try {
     const swaggerDocument = require("../swagger_output.json");
     const { apiReference } = require("@scalar/express-api-reference");
+    
+    // Read theme configurations dynamically from scalar.config.json
+    let theme = "purple";
+    try {
+      const scalarConfig = require("../scalar.config.json");
+      if (scalarConfig && scalarConfig.siteConfig && scalarConfig.siteConfig.theme) {
+        theme = scalarConfig.siteConfig.theme;
+      }
+    } catch (_) {
+      // Fallback if config is missing or unparseable
+    }
+
     // Mount docs BEFORE helmet so strict CSP doesn't block the Scalar CDN scripts
     app.use(
       "/docs",
       apiReference({
-        theme: "purple",
+        theme,
         spec: {
           content: swaggerDocument,
         },

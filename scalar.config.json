@@ -1,0 +1,20 @@
+{
+  "$schema": "https://registry.scalar.com/@scalar/schemas/config",
+  "scalar": "2.0.0",
+  "info": {
+    "title": "IDLIX API",
+    "description": "REST API that scrapes IDLIX using headless Chromium and JSON upstream APIs."
+  },
+  "siteConfig": {
+    "theme": "purple"
+  },
+  "navigation": {
+    "routes": {
+      "/api": {
+        "type": "openapi",
+        "title": "IDLIX API Reference",
+        "url": "swagger_output.json"
+      }
+    }
+  }
+}
