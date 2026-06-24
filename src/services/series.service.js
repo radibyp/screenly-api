@@ -84,7 +84,7 @@ async function getStreamData(slug) {
   const key = `series.stream.${slug}`;
   if (cache.isHit(key, CACHE_TTL.stream)) return cache.get(key);
 
-  const result = await httpClient.getStreamData(slug, 'series');
+  const result = await httpClient.getEpisodeStreamData(slug, 1, 1);
   if (result.streamUrl) cache.set(key, result);
   return result;
 }

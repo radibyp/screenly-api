@@ -117,7 +117,7 @@ describe('Series Routes', () => {
 
   describe('GET /api/series/:slug/stream', () => {
     it('returns stream URL when extraction succeeds', async () => {
-      httpClient.getStreamData.mockResolvedValue({
+      httpClient.getEpisodeStreamData.mockResolvedValue({
         streamUrl:   'https://cdn.example.com/ep.m3u8',
         subtitles:   [{ lang: 'id', label: 'Indonesian', url: 'https://cdn.example.com/id.vtt' }],
         videoId:     'xyz789',
@@ -135,7 +135,7 @@ describe('Series Routes', () => {
     });
 
     it('returns 404 when stream URL cannot be extracted', async () => {
-      httpClient.getStreamData.mockResolvedValue({
+      httpClient.getEpisodeStreamData.mockResolvedValue({
         streamUrl: null, subtitles: [], videoId: null,
         title: null, durationSec: null, maxHeight: null, expiresAt: null,
       });
