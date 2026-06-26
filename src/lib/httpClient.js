@@ -3,8 +3,10 @@
 /**
  * Lightweight HTTP client for the IDLIX scraper.
  *
- * All z2.idlixku.com requests go through the browser session
- * (cookieHarvester) to ensure the correct Cloudflare TLS fingerprint.
+ * All upstream requests are delegated to the external request/rendering
+ * service (requestServiceClient) so the API process never runs a browser
+ * runtime itself. The service returns rendered HTML / JSON with a real
+ * browser fingerprint and session, which the upstream site expects.
  *
  * Public API:
  *   get(path)                      → Promise<{ data: html }>
@@ -15,15 +17,14 @@
  */
 
 const { BASE_URL } = require('../config/env');
-const { fetchHtml, browserFetch, getCookieHeader, invalidate } = require('./cfBypass/cookieHarvester');
+const { fetchHtml, requestFetch } = require('./requestServiceClient');
 const { getStreamData, getEpisodeStreamData } = require('./streamClient');
 
 // ── Public API ──────────────────────────────────────────────────────────────────
 
 const httpClient = {
   /**
-   * GET a path on the upstream IDLIX site.
-   * Navigates via the browser (correct TLS fingerprint + CF cookies).
+   * GET a path on the upstream IDLIX site via the external request service.
    * Compatible with the old API: returns Promise<{ data: string }>.
    *
    * @param {string} path - Path relative to BASE_URL (e.g. "/movie").
@@ -36,37 +37,39 @@ const httpClient = {
   },
 
   /**
-   * Fetch a JSON API endpoint via the browser session.
+   * Fetch a JSON API endpoint via the external request service.
    *
    * @param {string} path - Path relative to BASE_URL.
    * @returns {Promise<Object|null>}
    */
   async getJson(path) {
     const url = `${BASE_URL}${path.startsWith('/') ? path : `/${path}`}`;
-    console.log(`[httpClient:getJson] Fetching URL: ${url}`);
-    
-    const res = await browserFetch(url, {
+
+    const res = await requestFetch(url, {
       headers: { accept: 'application/json' },
     });
-    
-    console.log(`[httpClient:getJson] HTTP Status: ${res.status}`);
-    console.log(`[httpClient:getJson] Raw Response (first 1000 chars):\n${(res.text || '').substring(0, 1000)}`);
-    
-    if (res.status === 403 || res.text.includes('<title>Just a moment...</title>') || res.text.includes('cf-challenge-stage') || res.text.includes('__cf_chl_opt')) {
-      console.error(`[httpClient:getJson] Validation Error: Detected Cloudflare or anti-bot protection page.`);
+
+    // The upstream site may return a challenge/interstitial page when it does
+    // not recognise the request. Detect those signatures and bail out.
+    if (
+      res.status === 403 ||
+      (res.text || '').includes('<title>Just a moment...</title>') ||
+      (res.text || '').includes('cf-challenge-stage') ||
+      (res.text || '').includes('__cf_chl_opt')
+    ) {
+      console.error('[httpClient:getJson] Upstream returned a challenge page; cannot parse JSON.');
       return null;
     }
 
     if (!res.ok) return null;
-    
-    try { 
-      return JSON.parse(res.text); 
-    } catch (err) { 
-      console.error(`[httpClient:getJson] Error parsing JSON. Response may not be valid JSON.`);
-      return null; 
+
+    try {
+      return JSON.parse(res.text);
+    } catch (err) {
+      console.error('[httpClient:getJson] Error parsing JSON. Response may not be valid JSON.');
+      return null;
     }
   },
-
 
   /**
    * Full streaming chain for a movie (returns subtitles + metadata).
@@ -90,7 +93,7 @@ const httpClient = {
 
   /**
    * No-op — kept for backward compatibility.
-   * The browser session is managed by cookieHarvester (closed on process exit).
+   * The request service owns its own lifecycle; there is no local session to close.
    */
   async close() {},
 };

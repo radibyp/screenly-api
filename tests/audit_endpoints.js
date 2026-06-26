@@ -3,7 +3,7 @@
 require('dotenv').config();
 const request = require('supertest');
 const createApp = require('../src/app');
-const { invalidate } = require('../src/lib/cfBypass/cookieHarvester');
+const { invalidate } = require('../src/lib/requestServiceClient');
 
 const app = createApp();
 

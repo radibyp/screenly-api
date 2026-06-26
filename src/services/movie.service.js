@@ -6,18 +6,32 @@ const { CACHE_TTL } = require('../config/env');
 const { mapApiItem, mapApiDetail } = require('../lib/scraper');
 
 /**
- * Fetch and parse the main movie browse page.
- * @returns {Promise<Array>}
+ * Fetch and parse the movie browse page with pagination.
+ * @param {number} [page=1]
+ * @param {number} [limit=36]
+ * @param {string} [sort='createdAt']
+ * @returns {Promise<{ items: Array, pagination: Object }>}
  */
-async function getBrowse() {
-  const key = 'movie.browse';
+async function getBrowse(page = 1, limit = 36, sort = 'createdAt') {
+  const key = `movie.browse.p${page}.l${limit}.s${sort}`;
   if (cache.isHit(key, CACHE_TTL.page)) return cache.get(key);
 
-  const data = await httpClient.getJson('/api/movies?page=1&limit=36&sort=createdAt');
+  const data = await httpClient.getJson(`/api/movies?page=${page}&limit=${limit}&sort=${sort}`);
   const items = (data?.data || []).map(mapApiItem).filter(Boolean);
 
-  cache.set(key, items);
-  return items;
+  // Upstream IDLIX API (Laravel) typically returns pagination fields alongside `data`.
+  // Extract what's available, deriving hasNext from item count vs limit as a fallback.
+  const totalPages = data?.last_page || data?.meta?.last_page || 0;
+  const currentPage = data?.current_page || data?.meta?.current_page || page;
+  const hasNext = totalPages > 0 ? currentPage < totalPages : items.length >= limit;
+
+  const result = {
+    items,
+    pagination: { currentPage, totalPages, hasNext },
+  };
+
+  cache.set(key, result);
+  return result;
 }
 
 /**

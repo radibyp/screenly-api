@@ -3,10 +3,11 @@
 /**
  * IDLIX Stream Client
  *
- * All z2.idlixku.com API calls run via browserFetch() — inside the persistent
- * Chromium page — giving us the correct TLS fingerprint (BoringSSL) that
- * Cloudflare Bot Management requires. Only the majorplay.net redeem call
- * (step 6) uses Node.js fetch() since it is a separate, non-CF domain.
+ * All upstream API calls run via the external request service
+ * (requestServiceClient.requestFetch) — a rendering microservice that issues
+ * requests with a real browser fingerprint and session. Only the majorplay.net
+ * redeem call (step 6) uses a plain Node.js fetch() since it is a separate,
+ * unprotected domain.
  *
  * ── Movie Chain ───────────────────────────────────────────────────────────────
  *   1. GET  /api/movies/{slug}                   → content UUID
@@ -27,7 +28,7 @@
  */
 
 const { BASE_URL } = require('../config/env');
-const { browserFetch } = require('./cfBypass/cookieHarvester');
+const { requestFetch } = require('./requestServiceClient');
 
 const UA = 'Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Mobile Safari/537.36';
 
@@ -36,15 +37,24 @@ const UA = 'Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/5
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 /**
- * Parse JSON from a browserFetch result text. Returns null on failure.
+ * Parse JSON from a requestFetch result text. Returns null on failure.
  * @param {{ status: number, ok: boolean, text: string }} result
+ * @param {string} [label] - Optional label for logging context.
  * @returns {object|null}
  */
-function parseJson(result) {
-  if (!result.ok || !result.text) return null;
+function parseJson(result, label) {
+  if (!result.ok || !result.text) {
+    if (label && result.status !== 0) {
+      console.warn(`[streamClient] ${label}: upstream returned ${result.status}`);
+    }
+    return null;
+  }
   try {
     return JSON.parse(result.text);
   } catch (_) {
+    // Log a snippet of the unparseable response for diagnostics
+    const snippet = (result.text || '').substring(0, 120);
+    console.warn(`[streamClient] ${label || 'parseJson'}: response is not valid JSON — ${snippet}`);
     return null;
   }
 }
@@ -77,7 +87,7 @@ async function resolveMovieUuid(slug, referer) {
   const url = `${BASE_URL}/api/movies/${slug}`;
   console.log(`[streamClient] Step 1: GET ${url}`);
 
-  const res  = await browserFetch(url, { headers: { referer } });
+  const res  = await requestFetch(url, { headers: { referer } });
   const data = parseJson(res);
 
   if (!data) {
@@ -110,7 +120,7 @@ async function resolveSeriesAndEpisodeUuids(slug, season, episode) {
 
   console.log(`[streamClient] Step 1a/1b: GET ${apiUrl}`);
 
-  const res = await browserFetch(apiUrl, {
+  const res = await requestFetch(apiUrl, {
     headers: {
       'accept': 'application/json',
       referer
@@ -153,7 +163,7 @@ async function trackView(contentType, contentId, referer, episodeId = null) {
   const url = `${BASE_URL}/api/views/track`;
   try {
     const body = JSON.stringify({ contentType, contentId, ...(episodeId ? { episodeId } : {}) });
-    const res  = await browserFetch(url, {
+    const res  = await requestFetch(url, {
       method:  'POST',
       body,
       headers: {
@@ -179,7 +189,7 @@ async function getPlayInfo(playInfoType, uuid, referer) {
   const url = `${BASE_URL}/api/watch/play-info/${playInfoType}/${uuid}`;
   console.log(`[streamClient] Step 3: GET ${url}`);
 
-  const res  = await browserFetch(url, { headers: { referer } });
+  const res  = await requestFetch(url, { headers: { referer } });
   const data = parseJson(res);
 
   if (!data) {
@@ -201,7 +211,7 @@ async function claimSession(gateToken, referer) {
   const url = `${BASE_URL}/api/watch/session/claim`;
   console.log(`[streamClient] Step 5: POST ${url}`);
 
-  const res  = await browserFetch(url, {
+  const res  = await requestFetch(url, {
     method:  'POST',
     body:    JSON.stringify({ gateToken }),
     headers: {
@@ -222,8 +232,10 @@ async function claimSession(gateToken, referer) {
 }
 
 /**
- * Step 6: POST to majorplay.net/api/play (Node.js fetch — no CF protection).
- * content-type MUST be "text/plain" to skip CORS preflight.
+ * Step 6: POST to majorplay.net/api/play (plain Node.js fetch).
+ * This is a separate domain with no rendering requirement, so it does not need
+ * to go through the external request service. content-type MUST be "text/plain"
+ * to skip CORS preflight.
  *
  * @param {string} redeemUrl
  * @param {string} claim
@@ -232,8 +244,8 @@ async function claimSession(gateToken, referer) {
 async function redeemClaim(redeemUrl, claim) {
   console.log(`[streamClient] Step 6: POST ${redeemUrl}`);
 
-  // getCookieHeader() is not needed here — majorplay.net doesn't use CF cookies.
-  // We just need the correct origin + referer headers.
+  // majorplay.net is a separate domain with no rendering requirement, so a
+  // plain Node.js fetch with the correct origin + referer headers suffices.
   const res = await fetch(redeemUrl, {
     method:  'POST',
     headers: {
@@ -298,7 +310,7 @@ async function runStreamTail(playInfoType, playInfoUuid, referer, label) {
   const claimData = await claimSession(playInfo.gateToken, referer);
   if (!claimData) return emptyResult();
 
-  // Step 6 (Node.js fetch — majorplay.net has no CF protection)
+  // Step 6 (plain Node.js fetch — majorplay.net needs no rendering service)
   const playData = await redeemClaim(claimData.redeemUrl, claimData.claim);
   if (!playData) return emptyResult();
 

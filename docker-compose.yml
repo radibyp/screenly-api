@@ -1,0 +1,37 @@
+# docker-compose for IDLIX API v3.0.0
+#
+# Two services:
+#   request-service — the external request/rendering microservice the API
+#                     delegates browser-like rendering to. It is a separate,
+#                     swappable service (see src/lib/requestServiceClient.js for
+#                     the wire protocol). Point the API at any compatible service
+#                     via REQUEST_SERVICE_URL.
+#   api             — the IDLIX REST API (built from this repo's Dockerfile).
+#
+# NOTE: a published container-registry image for the `api` service does not exist
+# yet, so `build: .` is used here. See the README for the registry-image TODO.
+
+services:
+  request-service:
+    # The request/rendering service is operator-supplied. Replace this image
+    # reference with your own (or a compatible public) rendering service that
+    # implements the POST {url,method,body,headers} -> {status,ok,text} protocol.
+    image: ghcr.io/radityprtama/idlix-request-service:v3.0.0
+    restart: unless-stopped
+    expose:
+      - "8191"
+    ports:
+      - "8191:8191"
+
+  api:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      - request-service
+    environment:
+      PORT: "3000"
+      IDLIX_BASE_URL: "https://z2.idlixku.com"
+      REQUEST_SERVICE_URL: "http://request-service:8191"
+      REQUEST_SERVICE_TIMEOUT_MS: "60000"
+    ports:
+      - "3000:3000"

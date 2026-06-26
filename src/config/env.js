@@ -11,15 +11,19 @@ module.exports = {
   /** HTTP port the server listens on. */
   PORT: process.env.PORT || 3000,
 
-  /** Whether Puppeteer runs in headless mode (set to 'false' to debug). */
-  PUPPETEER_HEADLESS: process.env.PUPPETEER_HEADLESS !== 'false',
-
   /**
-   * How long (in ms) to cache the harvested CF cookies before re-harvesting.
-   * Cloudflare clearance cookies typically last 30 minutes; default 25 min.
-   * Set to 0 to always re-harvest (not recommended).
+   * Base URL of the external request/rendering microservice.
+   *
+   * Browser-like rendering (rendered HTML, fingerprinted JSON fetches) is no
+   * longer performed inside the API process. It is delegated to this external
+   * service, which manages its own browser runtime and session.
+   *
+   * Example: REQUEST_SERVICE_URL=http://localhost:8191
    */
-  CF_COOKIE_REFRESH_MS: Number(process.env.CF_COOKIE_REFRESH_MS) || 25 * 60 * 1000,
+  REQUEST_SERVICE_URL: process.env.REQUEST_SERVICE_URL || 'http://localhost:8191',
+
+  /** Per-request timeout (ms) when calling the external request service. */
+  REQUEST_SERVICE_TIMEOUT_MS: Number(process.env.REQUEST_SERVICE_TIMEOUT_MS) || 60_000,
 
   /**
    * Per-category cache TTLs in hours.
@@ -40,3 +44,4 @@ module.exports = {
     stream:      Number(process.env.CACHE_TTL_STREAM)       || 0.25,
   },
 };
+

@@ -6,18 +6,30 @@ const { CACHE_TTL } = require('../config/env');
 const { mapApiItem, mapApiDetail } = require('../lib/scraper');
 
 /**
- * Fetch and parse the main TV series browse page.
- * @returns {Promise<Array>}
+ * Fetch and parse the TV series browse page with pagination.
+ * @param {number} [page=1]
+ * @param {number} [limit=36]
+ * @param {string} [sort='createdAt']
+ * @returns {Promise<{ items: Array, pagination: Object }>}
  */
-async function getBrowse() {
-  const key = 'series.browse';
+async function getBrowse(page = 1, limit = 36, sort = 'createdAt') {
+  const key = `series.browse.p${page}.l${limit}.s${sort}`;
   if (cache.isHit(key, CACHE_TTL.page)) return cache.get(key);
 
-  const data = await httpClient.getJson('/api/series?page=1&limit=36&sort=createdAt');
-  const items = (data?.data || []).map(mapApiItem).filter(Boolean);
-  
-  cache.set(key, items);
-  return items;
+  const data = await httpClient.getJson(`/api/series?page=${page}&limit=${limit}&sort=${sort}`);
+  const items = (data?.data || []).map(item => mapApiItem(item, { hintType: 'series' })).filter(Boolean);
+
+  const totalPages = data?.last_page || data?.meta?.last_page || 0;
+  const currentPage = data?.current_page || data?.meta?.current_page || page;
+  const hasNext = totalPages > 0 ? currentPage < totalPages : items.length >= limit;
+
+  const result = {
+    items,
+    pagination: { currentPage, totalPages, hasNext },
+  };
+
+  cache.set(key, result);
+  return result;
 }
 
 /**
@@ -32,7 +44,7 @@ async function getTrending() {
   if (!data || !data.above) return [];
 
   const section = data.above.find(s => s.title && s.title.toLowerCase().includes('trending')) || data.above[0];
-  const items = (section?.data || []).map(mapApiItem).filter(i => i.type === 'series');
+  const items = (section?.data || []).map(item => mapApiItem(item, { hintType: 'series' })).filter(i => i.type === 'series');
   
   cache.set(key, items);
   return items;

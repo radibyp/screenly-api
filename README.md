@@ -2,29 +2,56 @@
 
 [![License](https://img.shields.io/badge/license-MIT-green)](https://github.com/radityprtama/IDLIX-API/blob/main/LICENSE)
 
-A REST API that scrapes `https://z2.idlixku.com/` using **Puppeteer + stealth plugin** to bypass Cloudflare and extract all available content data.
+A REST API that scrapes `https://z2.idlixku.com/` and exposes its content data as a clean JSON API. Browser-like rendering is delegated to an **external request/rendering microservice**, so the API process itself runs no browser runtime.
 
 ## Features
 
-- **Cloudflare Bypass (TLS Fingerprinting):** Persistent headless Chromium singleton to seamlessly mirror BoringSSL signatures and bypass strict 403 Forbidden Cloudflare blocks.
-- **Rich Stream Metadata:** Directly extracts the internal majorplay.net JSON configurations, including stream URLs, multi-language subtitle tracks, duration, and video IDs.
-- **Resilient JSON Scraping:** The API now directly maps IDLIX's native JSON APIs (`/api/movies`, `/api/series`, etc.) to objects rather than using brittle Cheerio HTML parsing, resulting in **O(1) list mapping** and absolute layout resilience.
+- **External Rendering Delegation:** Browser-like rendering and fingerprinted requests are handled by a separate request service (`REQUEST_SERVICE_URL`). The API process stays lightweight and runs no browser internally.
+- **Rich Stream Metadata:** Extracts internal JSON configurations, including stream URLs, multi-language subtitle tracks, duration, and video IDs.
+- **Resilient JSON Scraping:** Maps IDLIX's native JSON APIs (`/api/movies`, `/api/series`, etc.) to objects rather than using brittle HTML parsing, resulting in **O(1) list mapping** and layout resilience.
 - **Interactive API Documentation:** Powered by Scalar (OpenAPI 3.0.0), available at `/docs`.
 - **Complete Feature Set:** Full detail pages, search endpoints, leaderboard, and all category filters (Movies, TV Series, Genres, Countries, Years, Networks).
 - **Consistent Response Envelope:** Standardized `{ success, data, pagination, filters }` output format.
-- **In-memory TTL Cache:** Configurable caching for blisteringly fast responses.
+- **In-memory TTL Cache:** Configurable caching for fast responses.
 
 ## Installation
+
+### Requirements
+
+- **Node.js 20+** for manual installation
+- **Docker + Docker Compose** for the container setup
+
+### Option A — Docker Compose (recommended)
+
+The repository includes a `docker-compose.yml` that runs the external request service and the API together. Because the API image is not yet published to a container registry, clone the repo and build locally:
+
+```bash
+git clone https://github.com/radityprtama/IDLIX-API.git
+cd IDLIX-API
+docker compose up -d --build
+```
+
+The API will be available at **http://localhost:3000**.
+
+> **TODO (registry image):** a prebuilt API image is not published yet. Once a `ghcr.io/radityprtama/idlix-api:v3.0.0` image is available, the `api` service in `docker-compose.yml` can switch from `build: .` to `image:` and the clone step can be replaced with downloading `docker-compose.yml` directly:
+> ```bash
+> curl -O https://raw.githubusercontent.com/radityprtama/IDLIX-API/main/docker-compose.yml
+> docker compose up -d
+> ```
+
+### Option B — Manual installation
 
 ```bash
 git clone https://github.com/radityprtama/IDLIX-API.git
 cd IDLIX-API
 npm install
-cp .env.example .env
+cp .env.example .env   # then edit .env and set REQUEST_SERVICE_URL
 npm start
 ```
 
-> **Requirements:** Node.js 18+ (Puppeteer downloads Chromium automatically)
+The API listens on `http://localhost:3000` (or the `PORT` in your `.env`).
+
+> The external request service must be running and reachable at `REQUEST_SERVICE_URL` for catalog and stream endpoints to return data.
 
 ---
 
@@ -80,7 +107,7 @@ All responses follow the envelope:
 | GET | `/movie/trending` | Trending movies |
 | GET | `/movie/trending/:page` | Trending movies (page N) |
 | GET | `/movie/:slug` | Movie detail — full metadata |
-| GET | `/movie/:slug/stream` | Extract stream URL (Puppeteer) |
+| GET | `/movie/:slug/stream` | Extract stream URL |
 
 **Example detail response:**
 ```json
@@ -178,21 +205,20 @@ All responses follow the envelope:
 
 ---
 
-## Stream URL Extraction Architecture
+## Architecture
 
-Unlike previous versions that relied on brittle Puppeteer network interception, the `/stream` endpoints now flawlessly replicate the internal 6-step IDLIX proxy chain while completely bypassing Cloudflare Bot Management.
+The API process **no longer runs a browser runtime internally**. All browser-like rendering and request work — rendered HTML, JSON fetched with a real browser fingerprint and session — is delegated to an **external request service** for authorized data sources. The API talks to that service over HTTP (`REQUEST_SERVICE_URL`), keeping the rendering concern isolated in one swappable client module (`src/lib/requestServiceClient.js`).
 
-### How it Works
+### Stream URL Extraction
 
-Because Cloudflare instantly blocks standard Node.js `fetch()` requests due to a **TLS Fingerprint mismatch** (OpenSSL vs. Chromium's BoringSSL), the API maintains a singleton, headless Chromium tab parked on the base URL. All protected API requests are executed *inside* this browser context using `page.evaluate(fetch())`, ensuring a perfect fingerprint.
+The `/stream` endpoints replicate the internal multi-step IDLIX proxy chain. The extraction sequence:
 
-The extraction follows this sequence:
 1. **UUID Resolution:** Calls `/api/movies/{slug}` or `/api/series/{slug}/season/{season}` to retrieve internal Movie/Series/Episode UUIDs.
 2. **Analytics Tracking:** Pings `/api/views/track`.
 3. **Gate Token Generation:** Requests `/api/watch/play-info/` which returns a `gateToken` and an `unlockAt` timestamp.
-4. **Mandatory Delay:** The API honors IDLIX's internal 15-second anti-scraping timer (`unlockAt - serverNow`). 
+4. **Mandatory Delay:** The API honors IDLIX's internal timer (`unlockAt - serverNow`).
 5. **Session Claim:** Exchanges the unlocked `gateToken` for a JSON Web Token and a redemption URL.
-6. **Final Resolution:** Fires a blazing-fast, direct Node.js `fetch()` to `majorplay.net` (which lacks Cloudflare protection) to redeem the token and extract the final `.json` configuration containing `.m3u8` links and `.vtt` subtitles.
+6. **Final Resolution:** Fires a direct `fetch()` to `majorplay.net` to redeem the token and extract the final `.json` configuration containing `.m3u8` links and `.vtt` subtitles.
 
 **Example movie stream request:**
 ```bash
@@ -204,7 +230,7 @@ curl http://localhost:3000/api/movie/per-aspera-ad-astra-2026/stream
 curl http://localhost:3000/api/series/oasis-2026/season/1/episode/1/stream
 ```
 
-> **Note:** The very first request after an API restart will take ~25 seconds (booting Puppeteer + solving Cloudflare JS challenge + the mandatory 15s API gate). Subsequent streams only suffer the mandatory 15-second API delay. Stream configurations are cached in-memory.
+> **Note:** The very first request after a service restart may take several seconds while the external request service warms up, plus the mandatory API gate delay. Subsequent streams only suffer the mandatory gate delay. Stream configurations are cached in-memory.
 
 ---
 
@@ -216,11 +242,12 @@ See [`.env.example`](.env.example) for all available configuration options.
 |----------|---------|-------------|
 | `IDLIX_BASE_URL` | `https://z2.idlixku.com` | Upstream site URL |
 | `PORT` | `3000` | API server port |
-| `PUPPETEER_HEADLESS` | `true` | Set `false` to show browser (debug) |
+| `REQUEST_SERVICE_URL` | `http://localhost:8191` | Base URL of the external request/rendering service |
+| `REQUEST_SERVICE_TIMEOUT_MS` | `60000` | Per-request timeout (ms) for the external request service |
 | `CACHE_TTL_DETAIL` | `2` | Detail page cache (hours) |
 | `CACHE_TTL_STREAM` | `0.25` | Stream URL cache (hours = 15min) |
 | `CACHE_TTL_SEARCH` | `0.5` | Search cache (hours = 30min) |
 
 ---
 
-**Contribution are welcome**
+**Contributions are welcome**

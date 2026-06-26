@@ -1,5 +1,13 @@
 node_modules
+coverage/
+.env
 json.sqlite
+server.log
+*.log
+.cache/
 .vscode
 Procfile
 *.swp
+
+# Local runtime artifacts (not needed by the application)
+cacheTime.json

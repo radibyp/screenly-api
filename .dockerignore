@@ -1,0 +1,32 @@
+node_modules
+npm-debug.log
+.npm
+
+# Environment & secrets
+.env
+.env.*
+
+# Version control
+.git
+.gitignore
+
+# Test & coverage artifacts
+coverage
+tests
+jest.config.js
+
+# Docker files (not needed inside the image)
+Dockerfile
+.dockerignore
+docker-compose.yml
+
+# Local runtime artifacts & logs
+*.log
+server.log
+cacheTime.json
+json.sqlite
+
+# Editor / OS noise
+.vscode
+Procfile
+*.swp

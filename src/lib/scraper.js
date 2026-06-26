@@ -4,19 +4,36 @@ const { BASE_URL } = require('../config/env');
 
 /**
  * Maps a native JSON API item from IDLIX into our standardized schema.
- * @param {Object} item - The raw JSON item from /api/movies or /api/homepage
+ * @param {Object} item - The raw JSON item from /api/movies, /api/series or /api/homepage
+ * @param {Object} [opts] - Optional context hints.
+ * @param {'movie'|'series'} [opts.hintType] - Force the output type when the
+ *   upstream JSON lacks a contentType field (e.g. /api/series items).
  * @returns {Object} Standardized media item
  */
-function mapApiItem(item) {
+function mapApiItem(item, opts) {
   if (!item) return null;
-  
+
   const source = item.content ? item.content : item;
-  const contentType = item.contentType || source.contentType || 'movie';
+  const contentType = item.contentType || source.contentType || null;
   const isSeries = contentType === 'series' || contentType === 'tv_series';
+
+  // When the upstream JSON omits contentType (happens on /api/series browse),
+  // accept the caller's hint so items aren't all mis-tagged as "movie".
+  let type;
+  if (isSeries) {
+    type = 'series';
+  } else if (contentType === 'movie' || contentType === 'film') {
+    type = 'movie';
+  } else if (opts && opts.hintType) {
+    type = opts.hintType;
+  } else {
+    type = 'movie';
+  }
+
   const slug = source.slug;
   if (!slug) return null;
-  
-  const endpoint = `${isSeries ? 'series' : 'movie'}/${slug}`;
+
+  const endpoint = `${type === 'series' ? 'series' : 'movie'}/${slug}`;
 
   let year = null;
   const releaseDate = source.releaseDate || source.firstAirDate;
@@ -31,7 +48,7 @@ function mapApiItem(item) {
     title: source.title || '',
     originalTitle: source.originalTitle || source.title || '',
     year,
-    type: isSeries ? 'series' : 'movie',
+    type,
     quality: source.quality || null,
     rating: source.voteAverage ? parseFloat(source.voteAverage) : null,
     season: null,

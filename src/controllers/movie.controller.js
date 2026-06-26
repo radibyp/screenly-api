@@ -5,8 +5,12 @@ const { success } = require('../lib/responseHelper');
 
 exports.browse = async (req, res, next) => {
   try {
-    const data = await movieService.getBrowse();
-    success(res, data);
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 36));
+    const sort = req.query.sort || 'createdAt';
+
+    const result = await movieService.getBrowse(page, limit, sort);
+    success(res, result.items, { pagination: result.pagination });
   } catch (err) {
     next(err);
   }
